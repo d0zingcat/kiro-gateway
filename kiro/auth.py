@@ -310,7 +310,11 @@ class KiroAuthManager:
         - refreshToken: Refresh token
         - accessToken: Access token (if already available)
         - profileArn: Profile ARN
-        - region: AWS region
+        - region: Auth/SSO region — stored as _sso_region and used only for the auth refresh
+          URL (e.g., https://prod.{region}.auth.desktop.kiro.dev/refreshToken). The Kiro API
+          endpoints (_api_host, _q_host) are controlled exclusively by the KIRO_REGION env var
+          (default: us-east-1) and are NOT updated from this field. This prevents invalid
+          organization login regions (e.g., us-east-2) from breaking API calls.
         - expiresAt: Token expiration time (ISO 8601)
         
         Additional fields for AWS SSO OIDC (kiro-cli):
@@ -342,12 +346,14 @@ class KiroAuthManager:
             if 'profileArn' in data:
                 self._profile_arn = data['profileArn']
             if 'region' in data:
-                self._region = data['region']
-                # Update URLs for new region
-                self._refresh_url = get_kiro_refresh_url(self._region)
-                self._api_host = get_kiro_api_host(self._region)
-                self._q_host = get_kiro_q_host(self._region)
-                logger.info(f"Region updated from credentials file: region={self._region}, api_host={self._api_host}, q_host={self._q_host}")
+                # Store as SSO/auth region only — does NOT override _api_host/_q_host.
+                # See docstring for details on why API host is kept separate.
+                self._sso_region = data['region']
+                self._refresh_url = get_kiro_refresh_url(self._sso_region)
+                logger.info(
+                    f"Auth region from credentials file: sso_region={self._sso_region} "
+                    f"(API stays at region={self._region}, api_host={self._api_host})"
+                )
             
             # Load clientIdHash and device registration for Enterprise Kiro IDE
             if 'clientIdHash' in data:

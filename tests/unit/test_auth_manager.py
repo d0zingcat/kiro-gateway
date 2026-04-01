@@ -122,6 +122,91 @@ class TestKiroAuthManagerCredentialsFile:
         print(f"Comparing refresh_token: Expected 'fallback_token', Got '{manager._refresh_token}'")
         assert manager._refresh_token == "fallback_token"
 
+    def test_api_host_not_overridden_by_credentials_file_region(self, tmp_path):
+        """
+        What it does: Verifies API host stays at configured region when credentials contain a different region.
+        Purpose: Prevent invalid regions (e.g., us-east-2 from org login) from breaking API calls.
+
+        Regression test for: credentials file with us-east-2 (org login region) causing gateway
+        to send API requests to https://q.us-east-2.amazonaws.com which does not exist.
+        """
+        print("Setup: Creating credentials file with us-east-2 region (org login scenario)...")
+        creds_file = tmp_path / "kiro-auth-token.json"
+        creds_data = {
+            "accessToken": "test_access_token",
+            "refreshToken": "test_refresh_token",
+            "expiresAt": "2099-01-01T00:00:00.000Z",
+            "region": "us-east-2"
+        }
+        creds_file.write_text(json.dumps(creds_data))
+
+        manager = KiroAuthManager(creds_file=str(creds_file), region="us-east-1")
+
+        print("Verification: API region stays at us-east-1...")
+        print(f"Comparing _region: Expected 'us-east-1', Got '{manager._region}'")
+        assert manager._region == "us-east-1"
+
+        print("Verification: api_host points to us-east-1, not us-east-2...")
+        print(f"api_host: {manager._api_host}")
+        assert "us-east-1" in manager._api_host
+        assert "us-east-2" not in manager._api_host
+
+        print("Verification: q_host points to us-east-1, not us-east-2...")
+        print(f"q_host: {manager._q_host}")
+        assert "us-east-1" in manager._q_host
+        assert "us-east-2" not in manager._q_host
+
+        print("Verification: sso_region stores the credentials region...")
+        print(f"Comparing _sso_region: Expected 'us-east-2', Got '{manager._sso_region}'")
+        assert manager._sso_region == "us-east-2"
+
+        print("Verification: refresh_url uses sso_region (us-east-2) with correct format...")
+        print(f"refresh_url: {manager._refresh_url}")
+        expected_refresh_url = "https://prod.us-east-2.auth.desktop.kiro.dev/refreshToken"
+        print(f"Comparing _refresh_url: Expected '{expected_refresh_url}', Got '{manager._refresh_url}'")
+        assert manager._refresh_url == expected_refresh_url
+
+    def test_sso_region_set_from_credentials_file(self, tmp_path):
+        """
+        What it does: Verifies _sso_region is populated from credentials file region field.
+        Purpose: Ensure auth/refresh requests use the correct regional endpoint.
+        """
+        print("Setup: Creating credentials file with eu-central-1 region...")
+        creds_file = tmp_path / "kiro-auth-token.json"
+        creds_data = {
+            "refreshToken": "test_refresh_token",
+            "region": "eu-central-1"
+        }
+        creds_file.write_text(json.dumps(creds_data))
+
+        manager = KiroAuthManager(creds_file=str(creds_file), region="us-east-1")
+
+        print("Verification: _sso_region set to eu-central-1...")
+        print(f"Comparing _sso_region: Expected 'eu-central-1', Got '{manager._sso_region}'")
+        assert manager._sso_region == "eu-central-1"
+
+        print("Verification: API region unchanged...")
+        assert manager._region == "us-east-1"
+
+    def test_sso_region_none_when_credentials_file_has_no_region(self, tmp_path):
+        """
+        What it does: Verifies _sso_region is None when credentials file has no region field.
+        Purpose: Ensure backward compatibility with credentials files that omit region.
+        """
+        print("Setup: Creating credentials file without region field...")
+        creds_file = tmp_path / "kiro-auth-token.json"
+        creds_data = {
+            "refreshToken": "test_refresh_token",
+            "accessToken": "test_access_token"
+        }
+        creds_file.write_text(json.dumps(creds_data))
+
+        manager = KiroAuthManager(creds_file=str(creds_file), region="us-east-1")
+
+        print("Verification: _sso_region is None...")
+        print(f"Comparing _sso_region: Expected None, Got '{manager._sso_region}'")
+        assert manager._sso_region is None
+
 
 class TestKiroAuthManagerTokenExpiration:
     """Tests for token expiration checking."""
